@@ -55,4 +55,4 @@ This derivative is based on [Benisgo/Symbolic11](https://github.com/Benisgo/Symb
 
 ## Build status
 
-The source port has not yet been compiled or runtime-tested on Windows. See [`BUILD_STATUS.md`](BUILD_STATUS.md) for the required validation checklist. The GitHub Actions workflow builds the x64 executable on Windows Server 2022 and publishes it as an artifact.
+The source port has not yet been compiled or runtime-tested on Windows. See [`BUILD_STATUS.md`](BUILD_STATUS.md) for the required validation checklist. GitHub Actions are intentionally not configured or used; build locally with the instructions above.
