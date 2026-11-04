@@ -1,6 +1,9 @@
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <windowsx.h>
+#include <shellapi.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shlobj.h>
@@ -74,8 +77,48 @@ static void status(const std::wstring& title,const std::wstring& message=L""){ s
 static bool isAdmin(){ BOOL yes=FALSE; PSID group=nullptr; SID_IDENTIFIER_AUTHORITY nt=SECURITY_NT_AUTHORITY; if(AllocateAndInitializeSid(&nt,2,SECURITY_BUILTIN_DOMAIN_RID,DOMAIN_ALIAS_RID_ADMINS,0,0,0,0,0,0,&group)){ CheckTokenMembership(nullptr,group,&yes); FreeSid(group);} return yes!=FALSE; }
 static bool developerMode(){ HKEY k{}; DWORD v=0,n=sizeof(v); bool ok=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock",0,KEY_READ,&k)==ERROR_SUCCESS; if(ok){ok=RegQueryValueExW(k,L"AllowDevelopmentWithoutDevLicense",nullptr,nullptr,(BYTE*)&v,&n)==ERROR_SUCCESS && v==1; RegCloseKey(k);} return ok; }
 static std::wstring winError(DWORD e){ wchar_t* b=nullptr; FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,nullptr,e,0,(LPWSTR)&b,0,nullptr); std::wstring s=b?b:L"Windows error "+std::to_wstring(e); if(b) LocalFree(b); while(!s.empty()&&(s.back()==L'\r'||s.back()==L'\n'||s.back()==L' '))s.pop_back(); return s; }
-static bool browseFolder(HWND owner,std::wstring& out){ BROWSEINFOW bi{}; bi.hwndOwner=owner; bi.lpszTitle=L"Select folder"; bi.ulFlags=BIF_RETURNONLYFSDIRS|BIF_NEWDIALOGSTYLE; PIDLIST_ABSOLUTE pid=SHBrowseForFolderW(&bi); if(!pid)return false; wchar_t path[MAX_PATH]{}; bool ok=SHGetPathFromIDListW(pid,path)!=FALSE; CoTaskMemFree(pid); if(ok)out=path; return ok; }
-static bool browseFile(HWND owner,std::wstring& out){ wchar_t path[32768]{}; OPENFILENAMEW ofn{}; ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=owner; ofn.lpstrFile=path; ofn.nMaxFile=(DWORD)std::size(path); ofn.lpstrFilter=L"All files\0*.*\0\0"; ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR; if(!GetOpenFileNameW(&ofn))return false; out=path; return true; }
+static bool browseItem(HWND owner, bool folder, std::wstring& out, const wchar_t* title = nullptr){
+    IFileOpenDialog* dlg = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg));
+    if (FAILED(hr)) return false;
+
+    DWORD options = FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
+    if (folder) options |= FOS_PICKFOLDERS;
+    else options |= FOS_FILEMUSTEXIST;
+    dlg->SetOptions(options);
+
+    if (title) dlg->SetTitle(title);
+
+    if (!out.empty()) {
+        IShellItem* initialItem = nullptr;
+        std::error_code ec;
+        std::wstring initialPath = out;
+        if (!folder && fs::is_regular_file(fs::path(initialPath), ec)) {
+            initialPath = fs::path(initialPath).parent_path().wstring();
+        }
+        if (SUCCEEDED(SHCreateItemFromParsingName(initialPath.c_str(), nullptr, IID_PPV_ARGS(&initialItem)))) {
+            dlg->SetFolder(initialItem);
+            initialItem->Release();
+        }
+    }
+
+    hr = dlg->Show(owner);
+    if (SUCCEEDED(hr)) {
+        IShellItem* result = nullptr;
+        if (SUCCEEDED(dlg->GetResult(&result))) {
+            PWSTR pszPath = nullptr;
+            if (SUCCEEDED(result->GetDisplayName(SIGDN_FILESYSPATH, &pszPath))) {
+                out = pszPath;
+                CoTaskMemFree(pszPath);
+            }
+            result->Release();
+        }
+    }
+    dlg->Release();
+    return SUCCEEDED(hr);
+}
+static bool browseFolder(HWND owner,std::wstring& out,const wchar_t* title=nullptr){ return browseItem(owner, true, out, title); }
+static bool browseFile(HWND owner,std::wstring& out,const wchar_t* title=nullptr){ return browseItem(owner, false, out, title); }
 static bool createHardLink(const std::wstring& link,const std::wstring& target){ return CreateHardLinkW(link.c_str(),target.c_str(),nullptr)!=FALSE; }
 static bool createSymbolic(const std::wstring& link,const std::wstring& target,bool dir){ DWORD flags=dir?SYMBOLIC_LINK_FLAG_DIRECTORY:0;
 #ifdef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
@@ -123,10 +166,10 @@ static void createControls(HWND w){
 static void switchPage(int n){ ShowWindow(g.createPage,n==0?SW_SHOW:SW_HIDE);ShowWindow(g.viewPage,n==1?SW_SHOW:SW_HIDE); EnableWindow(g.navCreate,n!=0); EnableWindow(g.navView,n!=1); }
 static void updateType(){ int ft=(int)SendMessageW(g.fileType,CB_GETCURSEL,0,0); int t=(int)SendMessageW(g.type,CB_GETCURSEL,0,0); if((ft==0&&t==1)||(ft==1&&t==2))SendMessageW(g.type,CB_SETCURSEL,0,0); }
 static LRESULT CALLBACK pageProc(HWND h,UINT m,WPARAM wp,LPARAM lp){ if(m==WM_COMMAND){int id=LOWORD(wp);
- if(id==32){std::wstring p;if(browseFolder(g.hwnd,p))setText(g.searchPath,p);return 0;}
+ if(id==32){std::wstring p=getText(g.searchPath);if(browseFolder(g.hwnd,p,L"Select Search Directory"))setText(g.searchPath,p);return 0;}
  if(id==33){startScan();return 0;}
  if(id==37){int i=ListView_GetNextItem(g.grid,-1,LVNI_SELECTED);if(i>=0&&i<(int)g.rows.size()){auto r=g.rows[i];int answer=MessageBoxW(g.hwnd,(L"Delete link entry?\n\n"+r.source+L"\n\nThe target will not be deleted.").c_str(),L"Confirm deletion",MB_ICONWARNING|MB_YESNO|MB_DEFBUTTON2);if(answer==IDYES){DWORD a=GetFileAttributesW(r.source.c_str());BOOL ok=(a!=INVALID_FILE_ATTRIBUTES&&(a&FILE_ATTRIBUTE_DIRECTORY))?RemoveDirectoryW(r.source.c_str()):DeleteFileW(r.source.c_str());if(ok){ListView_DeleteItem(g.grid,i);g.rows.erase(g.rows.begin()+i);status(L"Link deleted.");}else status(L"Delete failed",winError(GetLastError()));}}return 0;}
- if(id==17||id==20){std::wstring p; bool folder=id==17?true:(SendMessageW(g.fileType,CB_GETCURSEL,0,0)==0); if(folder?browseFolder(g.hwnd,p):browseFile(g.hwnd,p)){setText(id==17?g.linkFolder:g.destPath,p); EnableWindow(g.createBtn,!getText(g.linkFolder).empty()&&!getText(g.destPath).empty());} return 0;}
+ if(id==17||id==20){bool folder=id==17?true:(SendMessageW(g.fileType,CB_GETCURSEL,0,0)==0); std::wstring p=getText(id==17?g.linkFolder:g.destPath); const wchar_t* title=id==17?L"Select Link Location Folder":(folder?L"Select Destination Folder":L"Select Destination File"); if(folder?browseFolder(g.hwnd,p,title):browseFile(g.hwnd,p,title)){setText(id==17?g.linkFolder:g.destPath,p); EnableWindow(g.createBtn,!getText(g.linkFolder).empty()&&!getText(g.destPath).empty());} return 0;}
  if(id==22){auto p=getText(g.destPath); if(!p.empty()){auto n=basename(p); if(lower(extension(p))!=L"")n=fs::path(p).stem().wstring();setText(g.linkName,n);}return 0;}
  if(id==14){g.guide=!g.guide;setText(g.guideBtn,g.guide?L"Hide Guide  ?":L"Show Guide  ?"); status(g.guide?L"The link is created at the selected Link Folder.":L"",g.guide?L"It points to the selected Destination.":L""); return 0;}
  if(id==24){auto name=getText(g.linkName),folder=getText(g.linkFolder),dest=getText(g.destPath); if(name.empty()||name.find_first_of(L"\\/:*?\"<>|")!=std::wstring::npos){status(L"Invalid Name!",L"Enter a valid link name.");return 0;} if(folder.empty()||dest.empty()){status(L"Missing path",L"Select both folders/paths.");return 0;} int t=(int)SendMessageW(g.type,CB_GETCURSEL,0,0), ft=(int)SendMessageW(g.fileType,CB_GETCURSEL,0,0); bool dir=ft==0; if((t==1&&dir)||(t==2&&!dir)){status(L"Invalid link type",L"Selected type is not valid for this file type.");return 0;} fs::path target(dest); std::wstring link=(fs::path(folder)/name).wstring(); if(t==1)link+=target.extension().wstring(); DWORD err=0; bool ok=false; DWORD targetAttr=GetFileAttributesW(dest.c_str()); if(targetAttr==INVALID_FILE_ATTRIBUTES){status(L"Target not found",winError(GetLastError()));return 0;} if(dir && !(targetAttr&FILE_ATTRIBUTE_DIRECTORY)){status(L"Invalid destination",L"A folder is required for this link type.");return 0;} if(!dir && (targetAttr&FILE_ATTRIBUTE_DIRECTORY)){status(L"Invalid destination",L"A file is required for this link type.");return 0;} if(GetFileAttributesW(link.c_str())!=INVALID_FILE_ATTRIBUTES){status(L"Link already exists",link);return 0;} if(t==0)ok=createSymbolic(link,dest,dir); else if(t==1)ok=createHardLink(link,dest); else ok=createJunction(link,dest,err); if(ok)status(L"Link "+name+L" Created!"); else {if(!err)err=GetLastError();status(L"Error Creating Link",winError(err));} return 0; }

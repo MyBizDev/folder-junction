@@ -12,6 +12,8 @@ target_link_libraries(FolderJunction PRIVATE comctl32 comdlg32 shell32 shlwapi o
 if(MSVC)
   target_compile_options(FolderJunction PRIVATE /W4 /permissive- /EHsc /utf-8)
   target_link_options(FolderJunction PRIVATE /MANIFEST:EMBED /MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/resources/app.manifest)
+elseif(MINGW)
+  target_link_options(FolderJunction PRIVATE -municode)
 endif()
 set_target_properties(FolderJunction PROPERTIES OUTPUT_NAME "FolderJunction")
 if(MSVC)
