@@ -1,0 +1,8 @@
+#include <windows.h>
+#define IDI_APP 1
+#define IDR_PAYLOAD 101
+#define IDR_LICENSE 102
+
+IDI_APP ICON "folder-junction.ico"
+IDR_PAYLOAD RCDATA "../bin/FolderJunction.exe"
+IDR_LICENSE RCDATA "../LICENSE.txt"

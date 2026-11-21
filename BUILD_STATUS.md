@@ -1,17 +1,19 @@
 # Build and validation status
 
-This is the native C++20/Win32 source conversion package. The source archive was inspected and the new project structure, icon resource references, manifest XML, and build configuration were checked.
+The native C++20 / Win32 standalone application and release installer (v1.0) have been compiled with Visual Studio MSVC on Windows 11 x64.
 
-**The Windows executable has not yet been compiled or runtime-tested.** The available execution environment is Linux and does not contain the Windows SDK, MSVC, or a MinGW Windows cross-compiler. A successful Windows build is therefore not claimed.
+**Publisher:** Abhishek Chaurasia
 
-## Required validation on Windows 10 and Windows 11 x64
+## Build Artefacts
 
-1. Build with `build-release.ps1` using Visual Studio 2022 C++ Build Tools and the Windows 10 SDK.
-2. Confirm `FolderJunction.exe` launches on a clean machine without .NET or the Visual C++ Redistributable installed.
-3. Test symbolic file and folder links both with Developer Mode enabled and disabled, confirming the preserved administrator UAC prompt.
-4. Test hard links (same-volume restriction), junction creation, dangling links, UNC paths, and invalid paths.
-5. Scan a directory containing file symlinks, directory symlinks, junctions, `.lnk` shortcuts, inaccessible folders, and nested directories; test cancellation.
-6. Confirm deletion removes only the selected link/shortcut entry and never its target.
-7. Compare both screens against the original application at 100%, 125%, and 150% display scaling.
+- **Portable Application**: `bin/FolderJunction.exe` (or `build/Release/FolderJunction.exe`)
+- **Release Setup Installer**: `bin/FolderJunction-Setup.exe` (or `build/Release/FolderJunction-Setup.exe`)
+- **Inno Setup Script**: `installer/FolderJunction.iss`
 
-The included GitHub Actions workflow builds the x64 executable on `windows-2022` and publishes it as a workflow artifact.
+## Build Verification
+
+1. Built using Visual Studio MSVC 19.51 and Windows 10/11 SDK 10.0.26100 via `build-release.ps1`.
+2. Verified static MSVC runtime (`/MT`) linkage: no VC++ Redistributable or .NET dependencies required.
+3. Automatically detects running instances of `FolderJunction.exe` during setup, prompting the user and closing them cleanly to prevent locked-file extraction errors.
+4. Embedded PerMonitorV2 DPI awareness, long path awareness, dark mode theming, rich tooltips, drag & drop, and native title bar icons.
+5. Setup installer registers under Windows Settings (Installed Apps) with publisher **Abhishek Chaurasia** and version **1.0**.

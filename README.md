@@ -37,9 +37,12 @@ cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-Output: `build/Release/FolderJunction.exe`.
+Outputs:
+- Application: `build/Release/FolderJunction.exe` (and `bin/FolderJunction.exe`)
+- Setup Installer: `build/Release/FolderJunction-Setup.exe` (and `bin/FolderJunction-Setup.exe`)
+- Inno Setup script: `installer/FolderJunction.iss`
 
-The build is configured for the static MSVC runtime. No runtime installer is required on the target machine.
+The builds are configured for the static MSVC runtime (`/MT`). No runtime redistributables are required on the target machine.
 
 ## Important notes
 
